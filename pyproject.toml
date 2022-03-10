@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "cookiebot"
+version = "0.1.0"
+description = "yummy cookies"
+authors = ["Lukas Döllerer <info@lukas-doellerer.de>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+"discord.py" = "^1.7.3"
+
+[tool.poetry.dev-dependencies]
+ipython = "^8.1.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
