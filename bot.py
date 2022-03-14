@@ -5,9 +5,9 @@ import signal
 import sqlite3
 import sys
 
-
 import discord
 from discord.ext import commands
+from discord.ext.commands import Context
 from dotenv import load_dotenv
 from pretty_help import PrettyHelp
 
@@ -25,9 +25,9 @@ SQLITE_CREATE_TABLE = """CREATE TABLE IF NOT EXISTS cookie_scores (
 SQLITE_GET_COOKIE_SCORES = "SELECT * FROM cookie_scores;"
 SQLITE_SET_COOKIES_USER = """UPDATE cookie_scores
 SET n_cookies = ?
-WHERE user_id = ?
+WHERE user_id = ?;
 """
-SQLITE_ADD_USER = "INSERT INTO cookie_scores(user_id) VALUES (?)"
+SQLITE_ADD_USER = "INSERT INTO cookie_scores(user_id) VALUES (?);"
 
 
 def exit_strategy(*_):
@@ -40,24 +40,65 @@ def exit_strategy(*_):
 
 signal.signal(signal.SIGINT, exit_strategy)
 
+intents = discord.Intents(members=True, messages=True)
+
 bot = commands.Bot(
     command_prefix=commands.when_mentioned_or("!"),
     case_insensitive=True,
     description="🍪 Cookie Bot 🍪",
     owner_id="",
     help_command=PrettyHelp(show_index=False, no_category="Command Help"),
+    intends=intents,
 )
 
 conn: sqlite3.Connection
 
 
 @bot.command(
-    help="Give <user> a delicious cookie",
+    help="Give <user> <x> cookies. The <x> cookies are taken out of your account.",
     aliases=("donate", "give", "throw"),
     usage="@username",
 )
-async def pay(context, user: discord.Member):
-    await context.send(f"Imagine a cookie being sent to {username}")
+async def pay(context: Context, user: discord.Member, n_cookies: int):
+    if n_cookies <= 0:
+        await context.send("Nice try, but cookies are quite *natural*.")
+        return
+
+    if user.id == context.message.author.id:
+        await context.send("Don't be so selfish!")
+        return
+
+    all_scores = {
+        score[0]: score[1]
+        for score in conn.execute(SQLITE_GET_COOKIE_SCORES).fetchall()
+    }
+
+    if all_scores.get(context.message.author.id) is None:
+        conn.execute(SQLITE_ADD_USER, (context.message.author.id,))
+        conn.commit()
+        all_scores[context.message.author.id] = 0
+
+    if all_scores.get(user.id) is None:
+        conn.execute(SQLITE_ADD_USER, (user.id,))
+        conn.commit()
+        all_scores[user.id] = 0
+
+    conn.execute(
+        SQLITE_SET_COOKIES_USER,
+        (all_scores[context.message.author.id] - n_cookies, context.message.author.id),
+    )
+    conn.commit()
+
+    conn.execute(
+        SQLITE_SET_COOKIES_USER,
+        (all_scores[user.id] + n_cookies, user.id),
+    )
+    conn.commit()
+
+    await context.send(
+        f"{context.message.author.display_name}: {all_scores[context.message.author.id]} => {all_scores[context.message.author.id] - n_cookies}\n"
+        f"{user.display_name}: {all_scores[user.id]} => {all_scores[user.id] + n_cookies}\n"
+    )
 
 
 @bot.command(
@@ -65,16 +106,26 @@ async def pay(context, user: discord.Member):
     aliases=("bal", "state", "show"),
     usage="@username",
 )
-async def balance(context, user: discord.Member):
-    print(user)
-    await context.send("> 100")
+async def balance(context: Context, user: discord.Member):
+    all_scores = {
+        score[0]: score[1]
+        for score in conn.execute(SQLITE_GET_COOKIE_SCORES).fetchall()
+    }
+    await context.send(f"{user.display_name} has {all_scores.get(user.id, 0)} cookies.")
 
 
 @bot.command(
     help="List of global cookie counts", aliases=("best", "sum", "summary", "global")
 )
-async def top(context):
-    await context.send(conn.execute(SQLITE_GET_COOKIE_SCORES).fetchall())
+async def top(context: Context):
+    message = "Global Scores:\n"
+    for score in conn.execute(SQLITE_GET_COOKIE_SCORES).fetchall():
+        try:
+            username = await context.guild.fetch_member(score[0])
+        except:
+            username = "MEMBER_NOT_FOUND"
+        message += f"{username.display_name}: {score[1]}\n"
+    await context.send(message)
 
 
 @bot.event
