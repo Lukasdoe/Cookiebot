@@ -1,0 +1,6 @@
+# Cookiebot
+
+Install:
+```
+poetry install
+```
