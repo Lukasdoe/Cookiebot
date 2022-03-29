@@ -119,7 +119,9 @@ async def balance(context: Context, user: discord.Member):
 )
 async def top(context: Context):
     message = "Global Scores:\n"
-    for score in conn.execute(SQLITE_GET_COOKIE_SCORES).fetchall():
+    list = conn.execute(SQLITE_GET_COOKIE_SCORES).fetchall()
+    list.sort(key=lambda y: y[1])
+    for score in list:
         try:
             username = await context.guild.fetch_member(score[0])
         except:
